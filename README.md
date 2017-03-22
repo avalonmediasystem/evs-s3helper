@@ -1,3 +1,7 @@
+## Note
+
+This branch contains old work retained for reference.  Don't use.
+
 ## Overview
 
 s3helper signs S3 object requests using instance credentials.  It only accepts connections from 127.0.0.1
