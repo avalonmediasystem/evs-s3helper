@@ -50,18 +50,18 @@ type Config struct {
 }
 
 const defaultConfValues = `
-    listen: "127.0.0.1:8080"
-    logging:
-        ident: "s3-helper"
-        level: "info"
-    newrelic:
-        name:    ""
-        license: ""
-    s3_timeout:  5s
-    s3_retries:  5
-    concurrency:   0
-    statsd_addr:   ""
-    statsd_env:    ""
+listen: "127.0.0.1:8080"
+	logging:
+		ident: "s3-helper"
+		level: "info"
+	newrelic:
+		name:    ""
+		license: ""
+	s3_timeout:  5s
+	s3_retries:  5
+	concurrency:   0
+	statsd_addr:   ""
+	statsd_env:    ""
 `
 
 var conf Config
@@ -150,20 +150,10 @@ func forwardToS3(w http.ResponseWriter, r *http.Request) {
 
 	var resp *http.Response
 
-	// setup client outside of for loop since we don't
-	// need to define it multiple times and failures
-	// shouldn't need a new client
-	client := &http.Client{
-		Transport: &http.Transport{
-			Proxy: http.ProxyFromEnvironment,
-			DialContext: (&net.Dialer{
-				Timeout:   conf.S3Timeout,
-				KeepAlive: 1 * time.Second,
-			}).DialContext,
-			IdleConnTimeout: conf.S3Timeout,
-		}}
-
 	for {
+		// don't initiate everytime, reuse
+		client := &http.Client{Timeout: conf.S3Timeout}
+		// use GET instead of Do, as per the doc
 		resp, err = client.Do(r2)
 		if err == nil {
 			break
@@ -174,6 +164,7 @@ func forwardToS3(w http.ResponseWriter, r *http.Request) {
 		isTimeout := ok && netErr.Timeout()
 
 		if nretries >= conf.S3Retries || !isTimeout {
+			// alert through newrelic
 			logging.Errorf("S3 error: %v", err)
 			w.WriteHeader(500)
 			return
@@ -183,6 +174,7 @@ func forwardToS3(w http.ResponseWriter, r *http.Request) {
 		nretries++
 	}
 
+	// should be hoisted up
 	defer resp.Body.Close()
 
 	header := resp.Header
@@ -194,11 +186,14 @@ func forwardToS3(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// use aws go sdk
+	// should we do a HEAD call first to see if the object exists or not
 	logging.Debugf("S3 transfer %s [%s]", resp.Status, url)
 
 	w.WriteHeader(resp.StatusCode)
 	if resp.StatusCode >= 200 && resp.StatusCode <= 299 {
 		if r2.Method != "HEAD" {
+			// writer.write might me more efficient than the io.Copy.
 			bytes, err := io.Copy(w, resp.Body)
 			if err != nil {
 				logging.Infof("Failed to copy response for %s - %v (TCP disconnect?)", url, err)
