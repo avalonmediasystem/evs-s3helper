@@ -25,9 +25,6 @@
 #   unused-packages = true
 
 
-[[constraint]]
-  branch = "master"
-  name = "github.com/crunchyroll/evs-common"
 
 [[constraint]]
   branch = "master"

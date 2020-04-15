@@ -13,11 +13,10 @@ import (
 	"os/signal"
 	"path"
 	"runtime"
-	"strings"
+	// "strings"
 	"syscall"
 	"time"
 
-	"github.com/crunchyroll/evs-common/config"
 	"github.com/crunchyroll/go-aws-auth"
 
 	"github.com/rs/zerolog"
@@ -89,11 +88,11 @@ func forwardToS3(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Make sure that RemoteAddr is 127.0.0.1 so it comes off a local proxy
-	a := strings.SplitN(r.RemoteAddr, ":", 2)
-	if len(a) != 2 || a[0] != "127.0.0.1" {
-		w.WriteHeader(403)
-		return
-	}
+	// a := strings.SplitN(r.RemoteAddr, ":", 2)
+	// if len(a) != 2 || a[0] != "127.0.0.1" {
+	// 	w.WriteHeader(403)
+	// 	return
+	// }
 
 	upath := r.URL.Path
 	byterange := r.Header.Get("Range")
@@ -102,7 +101,7 @@ func forwardToS3(w http.ResponseWriter, r *http.Request) {
 		Str("range", byterange).
 		Str("method", r.Method).
 		Logger()
-	s3url := fmt.Sprintf("http://s3-%s.amazonaws.com/%s%s%s", conf.S3Region, conf.S3Bucket, conf.S3Path, upath)
+	s3url := fmt.Sprintf("http://s3.%s.amazonaws.com/%s%s%s", conf.S3Region, conf.S3Bucket, conf.S3Path, upath)
 	r2, err := http.NewRequest(r.Method, s3url, nil)
 	if err != nil {
 		w.WriteHeader(403)
@@ -114,6 +113,10 @@ func forwardToS3(w http.ResponseWriter, r *http.Request) {
 	}
 
 	r2 = awsauth.SignForRegion(r2, conf.S3Region, "s3")
+
+	logger.Info().
+		Str("RawQuery", r2.URL.RawQuery).
+		Msg("Received request")
 
 	url := r2.URL.String()
 	logger.Info().
@@ -226,35 +229,25 @@ func main() {
 
 	progName = path.Base(os.Args[0])
 
-	configFile := flag.String("config", configFileDefault, "config file to use")
+	// configFile := flag.String("config", configFileDefault, "config file to use")
 	pprofFlag := flag.Bool("pprof", false, "enable pprof")
 	flag.Parse()
 
-	if !config.Load(*configFile, defaultConfValues, &conf) {
-		log.Error().Msg(fmt.Sprintf("Unable to load config from %s - terminating", *configFile))
-		return
-	}
-	if conf.LogLevel == "error" {
-		zerolog.SetGlobalLevel(zerolog.ErrorLevel)
-	} else if conf.LogLevel == "warn" {
-		zerolog.SetGlobalLevel(zerolog.WarnLevel)
-	} else if conf.LogLevel == "info" {
-		zerolog.SetGlobalLevel(zerolog.InfoLevel)
-	} else if conf.LogLevel == "debug" {
-		zerolog.SetGlobalLevel(zerolog.DebugLevel)
-	} else if conf.LogLevel == "panic" {
-		zerolog.SetGlobalLevel(zerolog.PanicLevel)
-	} else if conf.LogLevel == "fatal" {
-		zerolog.SetGlobalLevel(zerolog.FatalLevel)
-	} else {
-		zerolog.SetGlobalLevel(zerolog.WarnLevel)
-		log.Error().Msg(fmt.Sprintf("Bad loglevel given %s - defaulting to Warn level", conf.LogLevel))
-	}
+	// conf.LogLevel = "error"
+	conf.Listen = "0.0.0.0:8080"
+	conf.S3Region = os.Getenv("S3_REGION")
+	conf.S3Bucket = os.Getenv("S3_BUCKET")
+	conf.S3Timeout =  5
+	conf.S3Retries =  5
+	conf.Concurrency =  0
+	conf.LogLevel = os.Getenv("S3_LOGLEVEL")
 
 	log.Info().Msg("Starting up")
 	defer log.Info().Msg("Shutting down")
 
-	log.Info().Msg(fmt.Sprintf("Loaded config from %s", *configFile))
+	log.Info().Msg(fmt.Sprintf("S3Region: %s", conf.S3Region))
+	log.Info().Msg(fmt.Sprintf("S3Bucket: %s", conf.S3Bucket))
+	log.Info().Msg(fmt.Sprintf("LogLevel: %s", conf.LogLevel))
 
 	initRuntime()
 
