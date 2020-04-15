@@ -237,7 +237,7 @@ func main() {
 	conf.Listen = "0.0.0.0:8080"
 	conf.S3Region = os.Getenv("S3_REGION")
 	conf.S3Bucket = os.Getenv("S3_BUCKET")
-	conf.S3Timeout =  5
+	conf.S3Timeout, _ = time.ParseDuration("5s")
 	conf.S3Retries =  5
 	conf.Concurrency =  0
 	conf.LogLevel = os.Getenv("S3_LOGLEVEL")
